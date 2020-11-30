@@ -67,8 +67,11 @@ extern USBD_HandleTypeDef hUsbDeviceHS;
 volatile uint8_t uart_buffer[1024];
 // Stores last x keys
 volatile uint8_t kb_key_buffer[4];
-const key_comb kb_shortcuts[1] = {{
-		{'a', 's', 'd', 'f'}, "Ala ma kota", sizeof("Ala ma kota")
+// WARNING: Strnig must be null terminated!
+const key_comb kb_shortcuts[2] = {{
+		{'a', 's', 'd', 'f'}, "Ala ma kota\0", sizeof("Ala ma kota\0")
+}, {
+		{'p', 'r', 'z', 'y'}, "kladowe zdanie dokonczone automatycznie\0", sizeof("kladowe zdanie dokonczone automatycznie\0")
 }};
 volatile uint8_t key_pressed = 0;
 
@@ -155,31 +158,37 @@ void USBH_HID_EventCallback(USBH_HandleTypeDef *phost) {
 	kbd_info = USBH_HID_GetKeybdInfo(phost);
 	char key = USBH_HID_GetASCIICode(kbd_info);
 
-	if (!key_pressed) {
-		USB_Keyboard_SendChar(key);
+	// https://www.usb.org/document-library/device-class-definition-hid-111
+	// page 56
+
+
+	if (key == KEY_NONE) {
+		printf("Key released\r\n");
+	} else {
+		printf("Key pressed: %c (id: %d)\r\n", key, (uint8_t) key);
+	}
+
+//	if (!key_pressed) {
+		USB_Keyboard_SendChar(key, 0, kbd_info);
 
 		// we don't want to insert key releases into our buffer
 		if (key != KEY_NONE) {
-			key_pressed = 1;
+//			key_pressed = 1;
 			update_kb_buffer((uint8_t) key);
 			int c = find_match();
 			//		printf("Kombinacja: %d\r\n", c);
 
 			if (c >= 0) {
 				printf("%.*s", kb_shortcuts[c].len, kb_shortcuts[c].txt);
+				HAL_Delay(15);
+				USB_Keyboard_SendString(kb_shortcuts[c].txt, kbd_info);
 			} else {
 				printf("%c", key);
 			}
 		}
-	} else {
-		key_pressed = 0;
-	}
-
-//		if (key == _NUL) {
-//			printf("Key released\r\n");
-//		} else {
-//			printf("Key pressed: %c (id: %d)\r\n", key, (uint8_t) key);
-//		}
+//	} else {
+//		key_pressed = 0;
+//	}
 
 }
 
