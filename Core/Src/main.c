@@ -19,12 +19,14 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "usb_device.h"
 #include "usb_host.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "usbh_hid.h"
-#include "ascii_table.h"
+#include "usbh_hid_keybd.h"
+#include "usb_hid_keyboard.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
@@ -57,11 +59,16 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 
+// DEVICE-related
+extern USBD_HandleTypeDef hUsbDeviceHS;
+//static uint8_t HID_buffer[8] = { 0 };
+
+// HOST-related
 volatile uint8_t uart_buffer[1024];
 // Stores last x keys
 volatile uint8_t kb_key_buffer[4];
 const key_comb kb_shortcuts[1] = {{
-		{A_LOWER, S_LOWER, D_LOWER, F_LOWER}, "Ala ma kota", sizeof("Ala ma kota")
+		{'a', 's', 'd', 'f'}, "Ala ma kota", sizeof("Ala ma kota")
 }};
 volatile uint8_t key_pressed = 0;
 
@@ -72,12 +79,16 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 void MX_USB_HOST_Process(void);
+
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+
+// Send string as letters
 
 int _write(int file, const char *ptr, ssize_t len) {
     // If the target file isn't stdout/stderr, then return an error
@@ -136,33 +147,39 @@ int find_match() {
 
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost) {
 
-	if (USBH_HID_GetDeviceType(phost) == HID_KEYBOARD) {
-		HID_KEYBD_Info_TypeDef *kbd_info;
-		kbd_info = USBH_HID_GetKeybdInfo(phost);
-		char key = USBH_HID_GetASCIICode(kbd_info);
+	if (USBH_HID_GetDeviceType(phost) != HID_KEYBOARD) {
+		printf("Device not supported! Device type: %d\r\n", USBH_HID_GetDeviceType(phost));
+	}
 
-		if (key != _NUL && !key_pressed) {
+	HID_KEYBD_Info_TypeDef *kbd_info;
+	kbd_info = USBH_HID_GetKeybdInfo(phost);
+	char key = USBH_HID_GetASCIICode(kbd_info);
+
+	if (!key_pressed) {
+		USB_Keyboard_SendChar(key);
+
+		// we don't want to insert key releases into our buffer
+		if (key != KEY_NONE) {
 			key_pressed = 1;
 			update_kb_buffer((uint8_t) key);
 			int c = find_match();
 			//		printf("Kombinacja: %d\r\n", c);
+
 			if (c >= 0) {
 				printf("%.*s", kb_shortcuts[c].len, kb_shortcuts[c].txt);
 			} else {
 				printf("%c", key);
 			}
-		} else {
-			key_pressed = 0;
 		}
+	} else {
+		key_pressed = 0;
+	}
 
 //		if (key == _NUL) {
 //			printf("Key released\r\n");
 //		} else {
 //			printf("Key pressed: %c (id: %d)\r\n", key, (uint8_t) key);
 //		}
-	} else {
-		printf("Device not supported! Device type: %d\r\n", USBH_HID_GetDeviceType(phost));
-	}
 
 }
 
@@ -199,9 +216,10 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_USB_HOST_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   setbuf(stdout, NULL);
-  printf("O Lol\n");
+  printf("Starting up...\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -345,7 +363,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-
+	printf("ERROR!\r\n");
   /* USER CODE END Error_Handler_Debug */
 }
 
